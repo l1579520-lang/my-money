@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <title>記帳記帳</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📒</text></svg>">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", sans-serif;
+            padding: 20px;
+            background-color: #f4f7f6;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .total {
+            grid-column: span 2;
+            background: #2ecc71;
+            color: white;
+            text-align: center;
+        }
+
+        input,
+        select,
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        canvas {
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            max-height: 300px;
+            /* 強制縮短圖表的高度 */
+        }
+
+        .left-side {
+            flex: 6;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .right-side {
+            flex: 4;
+            position: sticky;
+            top: 20px;
+        }
+
+        .record-checkbox {
+            width: 18px !important;
+            height: 18px !important;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .input-group-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .flex-item {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+
+            .main-container,
+            .input-group-container {
+                flex-direction: column;
+            }
+
+            .right-side {
+                position: static;
+            }
+        }
+
+        /* 讓日期輸入框內的預設圖示變大並填滿，達到點擊全框都能開啟的效果 */
+        input[type="date"] {
+            position: relative;
+            padding-left: 40px !important;
+            /* 為左側圖示留空間 */
+        }
+
+        /* 針對 Webkit 瀏覽器 (Chrome, Safari, Edge) 的小技巧 */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            position: absolute;
+            left: 8px;
+            /* 搬到左邊 */
+            top: 0;
+            width: 30px;
+            /* 做大一點 */
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            cursor: pointer;
+            background-color: transparent;
+            /* 讓它透明覆蓋在前面 */
+            z-index: 1;
+        }
+
+        /* 模擬一個左側日曆小圖示，讓使用者知道點這裡 */
+        input[type="date"]::before {
+            content: "📅";
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+            pointer-events: none;
+            /* 讓點擊穿透到下層的指示器 */
+        }
+    </style>
+</head>
+
+<body>
+    <input type="hidden" id="editId">
+
+    <div class="main-container">
+        <div class="left-side">
+            <div class="dashboard">
+                <div class="card total">
+                    <h3>總資產: $<span id="totalSum">0</span></h3>
+                </div>
+                <div class="card">💵 現金: $<span id="sum-cash">0</span></div>
+                <div class="card">🚌 悠遊卡: $<span id="sum-card">0</span></div>
+                <div class="card">🏦 郵局: $<span id="sum-bank">0</span></div>
+                <div class="card">🇾🇹 元大: $<span id="sum-yuanta">0</span></div>
+                <div class="card">🇨🇹 中信: $<span id="sum-ctbc">0</span></div>
+                <div class="card" style="color: red;">🛒 好市多卡: $<span id="sum-costco">0</span></div>
+                <div class="card" style="color: red;">🏨 國旅卡: $<span id="sum-travel">0</span></div>
+            </div>
+            <div class="input-group-container" style="display: flex; gap: 20px;">
+                <div class="card flex-item" style="flex: 6; margin-bottom: 0;">
+                    <h4 style="margin-top: 0;">📝 新增消費</h4>
+                    <label>記帳日期：</label>
+                    <input type="date" id="recordDate">
+                    <label>消費類別：</label>
+                    <select id="category">
+                        <option value="食">🍽️ 食 (餐飲、零食)</option>
+                        <option value="衣">👕 衣 (服飾、配件)</option>
+                        <option value="住">🏠 住 (房租、水電、家居)</option>
+                        <option value="行">🚗 行 (交通、加油、公車)</option>
+                        <option value="育">📚 育 (學習、書籍、學費)</option>
+                        <option value="樂">🎮 樂 (娛樂、電影、旅遊)</option>
+                        <option value="投"> 💰投資</option>
+                        <option value="其他">❓ 其他</option>
+                    </select>
+                    <div id="subCategoryContainer" style="display: none; margin-top: 5px;">
+                        <select id="subCategory">
+                            <option value="早餐">🍳 早餐</option>
+                            <option value="午餐">🍱 午餐</option>
+                            <option value="晚餐">🍜 晚餐</option>
+                            <option value="點心">🍰 點心</option>
+                            <option value="飲料">🥤 飲料</option>
+                            <option value="宵夜">🍗 宵夜</option>
+                            <option value="食材">食材</option>
+                            <option value="其他">❓ 其他</option>
+                        </select>
+                    </div>
+
+                    <input type="text" id="shop" list="shop-options-default" placeholder="在哪家店消費的？">
+
+                    <datalist id="advance-options">
+                        <option value="飯糰">
+                        <option value="吐司">
+                    </datalist>
+
+                    <datalist id="shop-options-food">
+                        <option value="全聯">
+                        <option value="麥當勞">
+                        <option value="7-11">
+                        <option value="好市多">
+                        <option value="路易莎">
+                        <option value="星巴克">
+                        <option value="巷口麵店">
+                        <option value="梁社漢">
+                        <option value="外出人">
+                    </datalist>
+                    <datalist id="shop-options-cloth">
+                        <option value="UNIQOL">
+                    </datalist>
+                    <datalist id="shop-options-hmoe">
+                        <option value="租屋">
+                    </datalist>
+
+                    <datalist id="shop-options-transport">
+                        <option value="捷運">
+                        <option value="客運">
+                        <option value="火車">
+                        <option value="高鐵">
+                        <option value="加油站">
+                    </datalist>
+                    <datalist id="shop-options-study">
+                        <option value="study">
+                    </datalist>
+                    <datalist id="shop-options-happy">
+                        <option value="蝦皮購物">
+                        <option value="百貨公司">
+                    </datalist>
+                    <datalist id="shop-options-invest">
+                        <option value="抽股票">
+                    </datalist>
+
+                    <datalist id="shop-options-default">
+                        <option value="全聯">
+                        <option value="蝦皮購物">
+                        <option value="7-11">
+                        <option value="不知道">
+                    </datalist>
+
+                    <datalist id="item-options-default">
+                        <option value="雞排飯">
+                        <option value="抽股票">
+                        <option value="飲料">
+                        <option value="生活雜物">
+                        <option value="水果">
+                        <option value="零食">
+                    </datalist>
+
+                    <datalist id="sub-advance-options">
+                        <option value="燕婷早餐">
+                        <option value="燕婷午餐">
+                        <option value="燕婷晚餐">
+                        <option value="好市多附卡">
+                        <option value="朋友聚餐">
+                    </datalist>
+                    <datalist id="transfer-note-options">
+                        <option value="提領現金">
+                        <option value="存入銀行">
+                        <option value="信用卡繳費">
+                        <option value="生活費轉帳">
+                        <option value="還錢給朋友">
+                    </datalist>
+
+                    <datalist id="adjust-note-options">
+                        <option value="忘記記帳">
+                        <option value="金額對不上">
+                        <option value="初始餘額設定">
+                        <option value="手續費誤差">
+                        <option value="利息收入">
+                    </datalist>
+
+                    <datalist id="item-options-home">
+                        <option value="房租">
+                        <option value="電費">
+                        <option value="水費">
+                        <option value="瓦斯費">
+                        <option value="管理費">
+                        <option value="網路費">
+                    </datalist>
+
+                    <datalist id="item-options-cloth">
+                        <option value="衣服">
+                    </datalist>
+                    <datalist id="item-options-transport">
+                        <option value="車票">
+                        <option value="停車費">
+                        <option value="加油">
+                    </datalist>
+
+                    <datalist id="item-options-study">
+                        <option value="買書">
+                    </datalist>
+                    <datalist id="item-options-happy">
+                        <option value="遊戲片">
+                    </datalist>
+                    <datalist id="item-options-invest">
+                        <option value="抽股票">
+                    </datalist>
+                    <datalist id="item-options-other">
+                        <option value="不知道">
+                    </datalist>
+
+
+                    <div id="items-container">
+                        <div class="item-row" style="display: flex; gap: 5px; margin-bottom: 5px;">
+                            <button type="button" onclick="removeItemRow(this)"
+                                style="width: auto; background: #ff7675; padding: 5px 10px; color: white; border: none; border-radius: 5px;">✕</button>
+
+                            <input type="text" class="detail-item" list="advance-options" placeholder="品項"
+                                style="flex: 2;">
+
+                            <input type="text" class="detail-amount" placeholder="金額" style="flex: 1;">
+                        </div>
+                    </div>
+                    <div id="live-total-display"
+                        style="text-align: right; margin-top: 10px; padding-right: 5px; font-weight: bold; color: #e74c3c;">
+                        本次記帳總計: $<span id="current-sum">0</span>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+
+                        <button type="button" onclick="addItemRow()" style="background: #27ae60; margin: 0; flex: 1;">➕
+                            增加品項</button>
+                        <button type="button" onclick="addAdvanceRow()"
+                            style="background: #9b59b6; margin: 0; flex: 1;">💸 增加代墊</button>
+                    </div>
+
+                    <select id="accountType">
+                        <optgroup label="💰 自有資產">
+                            <option value="現金">💵 現金</option>
+                            <option value="悠遊卡">🚌 悠遊卡</option>
+                            <option value="郵局">🏦 郵局</option>
+                            <option value="元大銀行">🇾🇹 元大銀行</option>
+                            <option value="中國信託">🇨🇹 中國信託</option>
+                        </optgroup>
+                        <optgroup label="💳 信用卡 (負債)">
+                            <option value="好市多卡">🛒 好市多卡</option>
+                            <option value="國旅卡">🏨 國旅卡</option>
+                        </optgroup>
+                    </select>
+                    <button onclick="saveData()" style="margin-top: 5px;">紀錄這一整筆</button>
+
+                </div>
+
+
+                <div style="flex: 4; display: flex; flex-direction: column; gap: 20px;">
+
+                    <div style="flex: 4; display: flex; flex-direction: column; gap: 20px;">
+                        <div class="card"
+                            style="flex: 1; background: #ecf0f1; border-left: 5px solid #3498db; margin: 0; display: flex; flex-direction: column; justify-content: center;">
+                            <h4 style="margin-top: 0;">🔄 資產轉移</h4>
+
+                            <input type="date" id="transferDate" style="margin-bottom: 5px; font-size: 14px;">
+
+                            <div style="display: flex; gap: 5px;">
+                                <select id="fromAccount" style="flex: 1;">
+                                    <option value="">從哪扣？</option>
+                                    <option value="現金">現金</option>
+                                    <option value="悠遊卡">悠遊卡</option>
+                                    <option value="郵局">郵局</option>
+                                    <option value="元大銀行">元大</option>
+                                    <option value="中國信託">中信</option>
+                                </select>
+
+                                <div style="align-self: center;">➔</div>
+
+                                <select id="toAccount" style="flex: 1;">
+                                    <option value="">轉到哪？</option>
+                                    <option value="現金">現金</option>
+                                    <option value="悠遊卡">悠遊卡</option>
+                                    <option value="郵局">郵局</option>
+                                    <option value="元大銀行">元大</option>
+                                    <option value="中國信託">中信</option>
+                                    <option value="好市多卡">好市多</option>
+                                    <option value="國旅卡">國旅卡</option>
+                                </select>
+                            </div>
+                            <input type="text" id="transferAmount" placeholder="轉移金額">
+                            <input type="text" id="transferNote" placeholder="備註 (例如：提款、還錢)">
+                            <button onclick="transferMoney()" style="background: #2980b9;">執行轉帳</button>
+                        </div>
+
+                        <div class="card"
+                            style="flex: 1; background: #fdfefe; border-left: 5px solid #7f8c8d; margin: 0; display: flex; flex-direction: column; justify-content: center;">
+                            <h4 style="margin-top: 0;">🔧 餘額微調</h4>
+                            <p style="font-size: 12px; color: #7f8c8d; margin-top: -5px; margin-bottom: 10px;">
+                                直接手動增加或減少帳戶金額：</p>
+
+                            <input type="date" id="adjustDate" style="margin-bottom: 5px; font-size: 14px;">
+
+                            <select id="adjustAccount">
+                                <option value="現金">💵 現金</option>
+                                <option value="悠遊卡">🚌 悠遊卡</option>
+                                <option value="郵局">🏦 郵局</option>
+                                <option value="元大銀行">🇾🇹 元大銀行</option>
+                                <option value="中國信託">🇨🇹 中國信託</option>
+                                <option value="好市多卡">🛒 好市多卡</option>
+                                <option value="國旅卡">🏨 國旅卡</option>
+                            </select>
+                            <input type="text" id="adjustDiff" placeholder="輸入變動金額 (例如: 50)">
+                            <input type="text" id="adjustNote" placeholder="變動原因 (必填)">
+
+                            <div style="display: flex; gap: 10px; margin-top: 5px;">
+                                <button onclick="quickAdjust('plus')" style="background: #2ecc71; flex: 1; margin: 0;">➕
+                                    增加</button>
+                                <button onclick="quickAdjust('minus')"
+                                    style="background: #e74c3c; flex: 1; margin: 0;">➖ 減少</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <div class="card">
+                <label>查詢條件：</label>
+                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                    <input type="date" id="startDate" style="flex: 1;">
+                    <input type="date" id="endDate" style="flex: 1;">
+                    <select id="filterCategory" style="flex: 1;">
+                        <option value="全部">🌈 全部類別</option>
+                        <option value="食">🍽️ 食</option>
+                        <option value="衣">👕 衣</option>
+                        <option value="住">🏠 住</option>
+                        <option value="行">🚗 行</option>
+                        <option value="育">📚 育</option>
+                        <option value="樂">🎮 樂</option>
+                        <option value="投"> 💰投資</option>
+                        <option value="其他">❓ 其他</option>
+                    </select>
+                </div>
+                <button onclick="filterData()">套用篩選並更新圖表</button>
+            </div>
+            <canvas id="myChart"></canvas>
+        </div>
+
+        <div class="right-side">
+            <div class="card">
+                <h3 style="border-bottom: 2px solid #3498db; padding-bottom: 5px;">📜 消費明細清單</h3>
+                <select id="listCategoryFilter" onchange="applyListFilter()" style="margin-bottom:10px;">
+                    <option value="全部">🌈 全部明細</option>
+                    <option value="食">🍽️ 食</option>
+                    <option value="衣">👕 衣</option>
+                    <option value="住">🏠 住</option>
+                    <option value="行">🚗 行</option>
+                    <option value="育">📚 育</option>
+                    <option value="樂">🎮 樂</option>
+                    <option value="投"> 💰投資</option>
+                    <option value="轉帳">🔄 轉帳</option>
+                    <option value="其他">❓ 其他</option>
+                </select>
+                <select id="listAccountFilter" onchange="applyListFilter()">
+                    <option value="全部">🏦 全部資產</option>
+                    <option value="現金">💵 現金</option>
+                    <option value="悠遊卡">💳 悠遊卡</option>
+                    <option value="郵局">📮 郵局</option>
+                    <option value="元大銀行">🐻 元大銀行</option>
+                    <option value="中國信託">🛡️ 中國信託</option>
+                    <option value="好市多卡">🛒 好市多卡</option>
+                    <option value="國旅卡">🏨 國旅卡</option>
+                </select>
+                <div class="card"
+                    style="background: #fff9f0; border-left: 5px solid #f39c12; margin-bottom: 10px; padding: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>💰 篩選總計：</span><span style="font-weight: bold; color: #e67e22;">$<span
+                                    id="filteredTotal">0</span></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>📅 日平均消費：</span><span style="font-weight: bold; color: #2c3e50;">$<span
+                                    id="dailyAvg">0</span></span>
+                        </div>
+                        <div id="dateRangeInfo" style="font-size: 11px; color: #95a5a6; text-align: right;"></div>
+                    </div>
+                </div>
+                <div id="detailList" style="max-height: 80vh; overflow-y: auto;">
+                    <p style="color: gray;">載入中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, orderBy, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBZ88PjwGZ2gwdEsCf9KQ1pq_ZHwdmAKM0",
+            authDomain: "my-money-app-c6095.firebaseapp.com",
+            projectId: "my-money-app-c6095",
+            storageBucket: "my-money-app-c6095.firebasestorage.app",
+            messagingSenderId: "85262391762",
+            appId: "1:85262391762:web:e4694e78d6c7a5cd22500b",
+            measurementId: "G-DWZ8N0T0T4"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        let allRecords = [];
+        let myChart = null;
+        const initialAssets = { "現金": 0, "悠遊卡": 0, "郵局": 0, "元大銀行": 0, "中國信託": 0, "好市多卡": -0, "國旅卡": 0 };
+
+        // --- 核心監聽 ---
+        onSnapshot(query(collection(db, "records"), orderBy("time", "asc")), (snapshot) => {
+            let balances = { ...initialAssets };
+            allRecords = [];
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                allRecords.push({ ...data, id: doc.id });
+                if (data.isTransfer) {
+                    if (balances.hasOwnProperty(data.fromAccount)) balances[data.fromAccount] -= data.amount;
+                    if (balances.hasOwnProperty(data.toAccount)) balances[data.toAccount] += data.amount;
+                } else {
+                    if (balances.hasOwnProperty(data.accountType)) balances[data.accountType] -= data.amount;
+                }
+            });
+
+            updateDashboard(balances);
+
+            const startInput = document.getElementById('startDate');
+            const endInput = document.getElementById('endDate');
+            if (allRecords.length > 0 && startInput && endInput && !startInput.value && !endInput.value) {
+                const times = allRecords.map(r => r.time);
+                startInput.value = new Date(Math.min(...times)).toISOString().split('T')[0];
+                endInput.value = new Date(Math.max(...times)).toISOString().split('T')[0];
+            }
+
+            applyListFilter();
+            updateChart();
+        });
+
+        function updateDashboard(cb) {
+            const fields = { 'sum-cash': '現金', 'sum-card': '悠遊卡', 'sum-bank': '郵局', 'sum-yuanta': '元大銀行', 'sum-ctbc': '中國信託', 'sum-costco': '好市多卡', 'sum-travel': '國旅卡' };
+            for (let id in fields) {
+                const el = document.getElementById(id);
+                if (el) el.innerText = (cb[fields[id]] || 0).toLocaleString();
+            }
+            const total = Object.values(cb).reduce((a, b) => a + b, 0);
+            const totalEl = document.getElementById('totalSum');
+            if (totalEl) totalEl.innerText = total.toLocaleString();
+        }
+
+        window.updateChart = () => {
+            const ctx = document.getElementById('myChart');
+            if (!ctx) return;
+            const startV = document.getElementById('startDate').value;
+            const endV = document.getElementById('endDate').value;
+            const catV = document.getElementById('filterCategory').value;
+            if (!startV || !endV) return;
+
+            const startTime = new Date(startV + "T00:00:00").getTime();
+            const endTime = new Date(endV + "T23:59:59").getTime();
+
+            const filtered = allRecords
+                .filter(r => {
+                    const isNotTransfer = !r.isTransfer;
+                    const isInDate = r.time >= startTime && r.time <= endTime;
+                    const isMatchCat = (catV === "全部") || (r.category === catV);
+                    return isNotTransfer && isInDate && isMatchCat;
+                })
+                .sort((a, b) => a.time - b.time);
+
+            const dailyData = {};
+            filtered.forEach(r => {
+                const d = new Date(r.time);
+                const dateStr = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+                const amt = (r.spendAmount !== undefined) ? r.spendAmount : r.amount;
+                dailyData[dateStr] = (dailyData[dateStr] || 0) + amt;
+            });
+
+            const labels = Object.keys(dailyData);
+            const values = Object.values(dailyData);
+
+            if (myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: catV === "全部" ? '每日總支出' : `${catV} 類別支出`,
+                        data: values,
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: (val) => '$' + val.toLocaleString() }
+                        }
+                    }
+                }
+            });
+        };
+
+        window.filterData = () => {
+            updateChart();
+            applyListFilter();
+        };
+
+        window.saveData = async () => {
+            const shop = document.getElementById('shop').value;
+            const type = document.getElementById('accountType').value;
+            const category = document.getElementById('category').value;
+            const subCategory = document.getElementById('subCategory').value;
+            const selectedDate = document.getElementById('recordDate').value;
+            const editId = document.getElementById('editId').value;
+            const rows = document.querySelectorAll('.item-row');
+
+            let totalAmount = 0, spendAmount = 0, advanceAmount = 0, itemNames = [], details = [];
+
+            rows.forEach(row => {
+                const nameEl = row.querySelector('.detail-item');
+                const priceEl = row.querySelector('.detail-amount');
+                if (!nameEl || !priceEl) return;
+
+                const name = nameEl.value.trim();
+                const price = Number(priceEl.value);
+                const isAdvance = priceEl.classList.contains('is-advance');
+
+                if (name && !isNaN(price)) {
+                    itemNames.push(name);
+                    totalAmount += price;
+                    if (isAdvance) advanceAmount += price;
+                    else spendAmount += price;
+                    details.push({ name, price, isAdvance });
+                }
+            });
+
+            if (!selectedDate || itemNames.length === 0) return alert("請填寫內容與日期");
+
+            const prefix = category === '食' ? `(${subCategory}) ` : '';
+            const displayItem = prefix + itemNames.join(', ');
+
+            const data = {
+                item: displayItem,
+                subCategory: category === '食' ? subCategory : '',
+                details, shop, amount: totalAmount, spendAmount, advanceAmount,
+                accountType: type, category,
+                time: new Date(selectedDate + "T12:00:00").getTime(),
+                isTransfer: false
+            };
+
+            try {
+                if (editId) await updateDoc(doc(db, "records", editId), data);
+                else await addDoc(collection(db, "records"), data);
+
+                // 1. 先執行清空
+                window.clearAllInputs();
+
+                // 2. 再次強制聚焦 (雙重保險)
+                const target = document.querySelector('.detail-item');
+                if (target) {
+                    target.focus();
+                    target.setSelectionRange(target.value.length, target.value.length); // 針對某些瀏覽器強制定位
+                }
+            } catch (e) {
+                console.error("儲存失敗", e);
+            }
+        };
+
+        window.prepareEdit = (id) => {
+            const record = allRecords.find(r => r.id === id);
+            if (!record) return;
+            document.getElementById('editId').value = id;
+            if (window.renderDetailList) window.renderDetailList(allRecords);
+
+            if (record.isTransfer) {
+                const dateStr = new Date(record.time).toISOString().split('T')[0];
+                if (record.item.includes("餘額微調")) {
+                    document.getElementById('adjustDate').value = dateStr;
+                    const targetAcc = (record.fromAccount === "系統校正") ? record.toAccount : record.fromAccount;
+                    document.getElementById('adjustAccount').value = targetAcc;
+                    document.getElementById('adjustDiff').value = record.amount;
+                    document.getElementById('adjustNote').value = record.note || '';
+                } else {
+                    document.getElementById('transferDate').value = dateStr;
+                    document.getElementById('fromAccount').value = record.fromAccount;
+                    document.getElementById('toAccount').value = record.toAccount;
+                    document.getElementById('transferAmount').value = record.amount;
+                    document.getElementById('transferNote').value = record.note || '';
+                }
+            } else {
+                document.getElementById('subCategoryContainer').style.display = (record.category === '食') ? 'block' : 'none';
+                if (record.subCategory) document.getElementById('subCategory').value = record.subCategory;
+
+                document.getElementById('recordDate').value = new Date(record.time).toISOString().split('T')[0];
+                document.getElementById('category').value = record.category || '食';
+                document.getElementById('shop').value = record.shop || '';
+                document.getElementById('accountType').value = record.accountType;
+
+                // 觸發商店建議更新
+                updateShopList(record.category);
+
+                const container = document.getElementById('items-container');
+                container.innerHTML = '';
+                if (record.details && record.details.length > 0) {
+                    record.details.forEach(d => {
+                        if (d.isAdvance) window.addAdvanceRow(d.name, d.price);
+                        else window.addItemRow(d.name, d.price);
+                    });
+                } else {
+                    window.addItemRow(record.item, record.amount);
+                }
+            }
+        };
+
+        // --- 商店連動邏輯函式 ---
+        function updateShopList(category) {
+            const shopInput = document.getElementById('shop');
+            if (category === '食') shopInput.setAttribute('list', 'shop-options-food');
+            else if (category === '衣') shopInput.setAttribute('list', 'shop-options-cloth');
+            else if (category === '住') shopInput.setAttribute('list', 'shop-options-hmoe');
+            else if (category === '行') shopInput.setAttribute('list', 'shop-options-transport');
+            else if (category === '育') shopInput.setAttribute('list', 'shop-options-study');
+            else if (category === '樂') shopInput.setAttribute('list', 'shop-options-happy');
+            else if (category === '投') shopInput.setAttribute('list', 'shop-options-invest');
+
+
+            else shopInput.setAttribute('list', 'shop-options-default');
+        }
+
+        // --- 修改：addItemRow (加入監聽) ---
+        // 修改一般品項
+        window.addItemRow = (name = '', price = '') => {
+            const div = document.createElement('div');
+            div.className = 'item-row';
+            div.style = 'display: flex; gap: 5px; margin-bottom: 5px;';
+            div.innerHTML = `
+        <button type="button" onclick="removeItemRow(this)" style="width: auto; background: #ff7675; padding: 5px 10px; color: white; border: none; border-radius: 5px;">✕</button>
+        <input type="text" class="detail-item" placeholder="品項" style="flex: 2;" value="${name}" lang="zh-TW" inputmode="text">
+        <input type="text" class="detail-amount" placeholder="金額" style="flex: 1;" value="${price}" enterkeyhint="done">`;
+
+            // 關鍵：確保這行有執行
+            div.querySelector('.detail-amount').addEventListener('input', () => {
+                window.calculateLiveTotal();
+            });
+
+            document.getElementById('items-container').appendChild(div);
+            window.calculateLiveTotal();
+        };
+
+        // 修改代墊品項 (也要確保一致)
+        window.addAdvanceRow = (name = '', price = '') => {
+            const div = document.createElement('div');
+            div.className = 'item-row';
+            div.style = 'display: flex; gap: 5px; margin-bottom: 5px; background: #f3e5f5; border-radius: 5px;';
+            div.innerHTML = `
+        <button type="button" onclick="removeItemRow(this)" style="width: auto; background: #ff7675; padding: 5px 10px; color: white; border: none; border-radius: 5px;">✕</button>
+        <input type="text" class="detail-item" list="sub-advance-options" placeholder="代墊品項" style="flex: 2; border: 1px solid #9b59b6;" value="${name}">
+        <input type="text" class="detail-amount is-advance" placeholder="金額" style="flex: 1; border: 1px solid #9b59b6;" value="${price}">`;
+
+            div.querySelector('.detail-amount').addEventListener('input', () => {
+                window.calculateLiveTotal();
+            });
+
+            document.getElementById('items-container').appendChild(div);
+            window.calculateLiveTotal();
+        };
+
+        window.removeItemRow = (btn) => {
+            if (document.querySelectorAll('.item-row').length > 1) {
+                btn.parentElement.remove();
+                window.calculateLiveTotal(); // 刪除後重新計算
+            } else {
+                console.log("至少一個品項");
+            }
+        };
+
+        const originalClearAllInputs = window.clearAllInputs;
+        window.clearAllInputs = () => {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('editId').value = '';
+            document.getElementById('recordDate').value = today;
+            document.getElementById('category').value = '食';
+            document.getElementById('shop').value = '';
+            document.getElementById('accountType').value = '現金';
+            document.getElementById('subCategoryContainer').style.display = 'block';
+            updateShopList('食');
+
+            const container = document.getElementById('items-container');
+            const rows = container.querySelectorAll('.item-row');
+
+            if (rows.length > 0) {
+                // 1. 處理留下來的第一行
+                const firstRow = rows[0];
+                const inputs = firstRow.querySelectorAll('input');
+                inputs.forEach(input => input.value = '');
+
+                // 【關鍵補強】：確保這第一行一定有計算總額的監聽
+                const priceInput = firstRow.querySelector('.detail-amount');
+                // 先移除舊的避免重複綁定，再綁上新的
+                priceInput.removeEventListener('input', window.calculateLiveTotal);
+                priceInput.addEventListener('input', window.calculateLiveTotal);
+
+                // 2. 刪除剩下的行
+                for (let i = 1; i < rows.length; i++) {
+                    rows[i].remove();
+                }
+            } else {
+                window.addItemRow();
+            }
+
+            // ... 其餘清空邏輯 (transferDate, adjustDate 等) ...
+            if (document.getElementById('transferDate')) document.getElementById('transferDate').value = today;
+            if (document.getElementById('adjustDate')) document.getElementById('adjustDate').value = today;
+
+            ['fromAccount', 'toAccount', 'transferAmount', 'transferNote', 'adjustDiff', 'adjustNote'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+
+            // 最後強制歸零總計顯示
+            window.calculateLiveTotal();
+
+            // 延遲聚焦
+            setTimeout(() => {
+                const firstInput = container.querySelector('.detail-item');
+                if (firstInput) {
+                    firstInput.focus();
+                    firstInput.click();
+                }
+            }, 100);
+
+            if (window.renderDetailList) window.renderDetailList(allRecords);
+        };
+
+        window.applyListFilter = () => {
+            const filterCat = document.getElementById('listCategoryFilter').value;
+            const filterAcc = document.getElementById('listAccountFilter').value;
+
+            const now = new Date(), cy = now.getFullYear(), cm = now.getMonth(), dms = now.getDate();
+
+            // --- 核心篩選邏輯 ---
+            let filtered = allRecords.filter(r => {
+                // 1. 類別過濾
+                let matchCat = (filterCat === "全部") ||
+                    (filterCat === "轉帳" && r.isTransfer) ||
+                    (r.category === filterCat && !r.isTransfer);
+
+                // 2. 資產過濾
+                let matchAcc = (filterAcc === "全部") ||
+                    (r.accountType === filterAcc) ||
+                    (r.isTransfer && (r.fromAccount === filterAcc || r.toAccount === filterAcc));
+
+                return matchCat && matchAcc;
+            });
+
+            // --- 計算當月統計 (不包含轉帳) ---
+            const monthlySpendOnly = filtered.filter(r => {
+                const d = new Date(r.time);
+                return d.getFullYear() === cy && d.getMonth() === cm && !r.isTransfer;
+            });
+
+            const totalSum = monthlySpendOnly.reduce((s, r) => s + (r.spendAmount !== undefined ? r.spendAmount : r.amount), 0);
+
+            // 更新介面數值
+            document.getElementById('filteredTotal').innerText = totalSum.toLocaleString();
+            document.getElementById('dailyAvg').innerText = dms > 0 ? Math.round(totalSum / dms).toLocaleString() : "0";
+            document.getElementById('dateRangeInfo').innerText = `(統計 ${cm + 1}/1 ~ ${cm + 1}/${dms})`;
+
+            // 渲染清單
+            renderDetailList(filtered);
+        };
+
+        window.renderDetailList = (records) => {
+            const list = document.getElementById('detailList');
+            if (!list) return;
+            list.innerHTML = '';
+            const editingId = document.getElementById('editId').value;
+            const categoryIcons = { '食': '🍽️', '衣': '👕', '住': '🏠', '行': '🚗', '育': '📚', '樂': '🎮', '其他': '❓' };
+            const sortedRecords = [...records].sort((a, b) => b.time - a.time);
+            let lastDateStr = "";
+
+            sortedRecords.forEach(data => {
+                const isT = data.isTransfer;
+                const isEditing = data.id === editingId;
+                const currentDate = new Date(data.time);
+                const currentDateStr = `${currentDate.getFullYear()}/${currentDate.getMonth() + 1}/${currentDate.getDate()}`;
+                const dayOfWeek = ["日", "一", "二", "三", "四", "五", "六"][currentDate.getDay()];
+
+                if (currentDateStr !== lastDateStr) {
+                    list.innerHTML += `<div style="background: #f8f9fa; padding: 5px 15px; margin: 15px 0 8px 0; border-radius: 20px; color: #2c3e50; font-weight: bold; font-size: 13px; border: 1px solid #dee2e6; display: inline-block;">📅 ${currentDateStr} (週${dayOfWeek})</div>`;
+                    lastDateStr = currentDateStr;
+                }
+
+                let icon = isT ? '🔄' : (categoryIcons[data.category] || '💰');
+                let displayTitle = data.item;
+                let subDetail = '';
+
+                if (isT) {
+                    if (data.item.includes("餘額微調")) {
+                        icon = '🔧';
+                        const targetAccount = (data.fromAccount === "系統校正") ? data.toAccount : data.fromAccount;
+                        const action = (data.fromAccount === "系統校正") ? "增加" : "減少";
+                        displayTitle = `餘額微調: ${targetAccount}`;
+                        subDetail = `<div style="font-size: 11px; color: #34495e; margin-bottom: 3px;">[${action}] $${data.amount.toLocaleString()}</div>`;
+                    } else {
+                        displayTitle = `轉帳: ${data.fromAccount} ⮕ ${data.toAccount}`;
+                    }
+                }
+
+                list.innerHTML += `
+            <div class="card" style="margin-bottom:8px; margin-left: 5px; border-left: 5px solid ${isEditing ? '#f39c12' : (isT ? '#3498db' : '#e74c3c')}; ${isEditing ? 'background: #fff9f0;' : 'background: white;'} box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display:flex; justify-content:space-between; align-items: center;">
+                    <span style="font-weight:bold; font-size: 14px;">${icon} ${displayTitle}</span>
+                    <span style="color:${isT ? '#3498db' : '#e74c3c'}; font-weight: bold;">${isT ? '' : '-'}$${data.amount.toLocaleString()}</span>
+                </div>
+                ${subDetail}
+                ${data.note ? `<div style="font-size: 12px; color: #7f8c8d; margin: 2px 0;">📝 ${data.note}</div>` : ''}
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px; border-top: 1px dotted #eee; padding-top: 5px;">
+                    <small style="color: #95a5a6; font-size: 11px;">🏠 ${isT ? '資產異動' : data.accountType} ${data.shop ? ' @ ' + data.shop : ''}</small>
+                    <div style="display: flex; gap: 5px;">
+                        ${isEditing ? `<button onclick="clearAllInputs()" style="width:auto; padding:2px 10px; background:#95a5a6; color:white; border:none; border-radius:4px; font-size:11px;">❌ 取消</button>` : `<button onclick="prepareEdit('${data.id}')" style="width:auto; padding:3px 8px; background:#f39c12; color:white; border:none; border-radius:4px; font-size:11px;">✏️</button><button onclick="deleteRecord('${data.id}')" style="width:auto; padding:3px 8px; background:#e74c3c; color:white; border:none; border-radius:4px; font-size:11px;">🗑️</button>`}
+                    </div>
+                </div>
+            </div>`;
+            });
+        };
+
+        window.deleteRecord = async (id) => { if (confirm("確定刪除？")) await deleteDoc(doc(db, "records", id)); };
+
+        window.transferMoney = async () => {
+            const f = document.getElementById('fromAccount').value;
+            const t = document.getElementById('toAccount').value;
+            const a = Number(document.getElementById('transferAmount').value);
+            const note = document.getElementById('transferNote').value;
+            const selectedDate = document.getElementById('transferDate').value;
+            const editId = document.getElementById('editId').value;
+            if (!selectedDate || !f || !t || !a || f === t) return alert("請確認欄位");
+            const data = { item: `轉帳: ${f} ⮕ ${t}`, amount: a, fromAccount: f, toAccount: t, isTransfer: true, time: new Date(selectedDate + "T12:00:00").getTime(), accountType: "轉帳", note: note };
+            try {
+                if (editId) await updateDoc(doc(db, "records", editId), data);
+                else await addDoc(collection(db, "records"), data);
+                console.log("完成！");
+                window.clearAllInputs();
+            } catch (e) { alert("失敗"); }
+        };
+
+        window.quickAdjust = async (mode) => {
+            const account = document.getElementById('adjustAccount').value;
+            const diffAmount = Number(document.getElementById('adjustDiff').value);
+            const note = document.getElementById('adjustNote').value;
+            const selectedDate = document.getElementById('adjustDate').value;
+            const editId = document.getElementById('editId').value;
+            if (!selectedDate || !diffAmount || !note) return alert("請填寫完整");
+            const data = { item: `🔧 餘額微調 (${mode === 'plus' ? '增加' : '減少'})`, amount: diffAmount, fromAccount: mode === 'plus' ? "系統校正" : account, toAccount: mode === 'plus' ? account : "系統校正", isTransfer: true, time: new Date(selectedDate + "T12:00:00").getTime(), accountType: "轉帳", note: note };
+            try {
+                if (editId) await updateDoc(doc(db, "records", editId), data);
+                else await addDoc(collection(db, "records"), data);
+                console.log("微調完成！");
+                window.clearAllInputs();
+            } catch (e) { alert("失敗"); }
+        };
+
+
+        // --- 新增：即時計算總額函式 ---
+        window.calculateLiveTotal = () => {
+            // 抓取容器內所有的金額輸入框 (包含一般與代墊)
+            const container = document.getElementById('items-container');
+            if (!container) return;
+
+            const amountInputs = container.querySelectorAll('.detail-amount');
+            let total = 0;
+
+            amountInputs.forEach(input => {
+                const val = parseFloat(input.value);
+                if (!isNaN(val)) {
+                    total += val;
+                }
+            });
+
+            const sumEl = document.getElementById('current-sum');
+            if (sumEl) {
+                sumEl.innerText = total.toLocaleString();
+            }
+        };
+
+        // --- 事件監聽註冊 ---
+        document.getElementById('category').addEventListener('change', function () {
+            const category = this.value;
+            const subContainer = document.getElementById('subCategoryContainer');
+
+            // 1. 食的子類別顯示
+            subContainer.style.display = (category === '食') ? 'block' : 'none';
+
+            // 2. 更新商店建議 (原本的邏輯)
+            updateShopList(category);
+
+            // 3. 更新「品項」建議清單
+            // 對應關係：住 -> item-options-home, 衣 -> item-options-cloth ...
+            const catMap = {
+                '衣': 'cloth', '住': 'home', '行': 'transport',
+                '育': 'study', '樂': 'happy', '投': 'invest', '其他': 'other'
+            };
+            const suffix = catMap[category] || 'default';
+            const listId = `item-options-${suffix}`;
+
+            // 將畫面上所有的品項輸入框都切換到該清單
+            const itemInputs = document.querySelectorAll('.detail-item');
+            itemInputs.forEach(input => {
+                // 排除掉「代墊」的輸入框（如果有特殊清單的話）
+                if (!input.classList.contains('is-advance')) {
+                    input.setAttribute('list', listId);
+                }
+            });
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            window.clearAllInputs();
+        });
+    </script>
+</body>
+
+</html>
+
+<!-- 我想看出現金 郵局等等資產的紀錄,但不要用選的,用複選框打勾 -->
